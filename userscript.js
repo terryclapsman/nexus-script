@@ -261,6 +261,69 @@
             margin-bottom: 15px;
             box-sizing: border-box;
         }
+        .nx-templates-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .nx-templates-btn {
+            background: #FFA500;
+            color: #000;
+            border: 2px solid #000;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .nx-templates-btn:hover {
+            background: #FF8C00;
+        }
+        .nx-templates-menu {
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            margin-bottom: 5px;
+            background: #1a1a1a;
+            border: 1px solid #FFA500;
+            border-radius: 8px;
+            min-width: 200px;
+            max-width: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 10002;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .nx-templates-menu.show {
+            display: block;
+        }
+        .nx-template-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            color: #ccc;
+            border-bottom: 1px solid #222;
+            transition: background 0.2s;
+            font-size: 13px;
+        }
+        .nx-template-item:hover {
+            background: #2a2a2a;
+            color: #FFA500;
+        }
+        .nx-template-item:last-child {
+            border-bottom: none;
+        }
+        .nx-folder-header {
+            padding: 8px 15px;
+            color: #FFA500;
+            font-weight: bold;
+            font-size: 12px;
+            border-bottom: 1px solid #333;
+            background: #151515;
+        }
     `;
 
     const styleSheet = document.createElement("style");
@@ -388,76 +451,77 @@
         return null;
     }
 
-async function getCleanTitle() {
-    return new Promise(async (resolve) => {
-        const threadId = getThreadId();
+    async function getCleanTitle() {
+        return new Promise(async (resolve) => {
+            const threadId = getThreadId();
 
-        if (threadId) {
-            try {
-                const response = await fetch(`/threads/${threadId}/edit`, {
-                    method: 'GET',
-                    credentials: 'same-origin'
-                });
+            if (threadId) {
+                try {
+                    const response = await fetch(`/threads/${threadId}/edit`, {
+                        method: 'GET',
+                        credentials: 'same-origin'
+                    });
 
-                if (response.ok) {
-                    const html = await response.text();
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
+                    if (response.ok) {
+                        const html = await response.text();
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
 
-                    const titleInput = doc.querySelector('input[name="title"]');
-                    if (titleInput && titleInput.value) {
-                        resolve(titleInput.value.trim() || 'Тема');
-                        return;
+                        const titleInput = doc.querySelector('input[name="title"]');
+                        if (titleInput && titleInput.value) {
+                            resolve(titleInput.value.trim() || 'Тема');
+                            return;
+                        }
                     }
+                } catch (e) {
                 }
-            } catch (e) {
             }
-        }
 
-        const titleElement = document.querySelector('.p-title-value') ||
-                            document.querySelector('.thread-title h1') ||
-                            document.querySelector('h1');
+            const titleElement = document.querySelector('.p-title-value') ||
+                                document.querySelector('.thread-title h1') ||
+                                document.querySelector('h1');
 
-        if (titleElement) {
-            let title = titleElement.textContent.trim();
+            if (titleElement) {
+                let title = titleElement.textContent.trim();
 
-            const dataTitle = titleElement.getAttribute('data-title') ||
-                            titleElement.getAttribute('data-original-title');
+                const dataTitle = titleElement.getAttribute('data-title') ||
+                                titleElement.getAttribute('data-original-title');
 
-            if (dataTitle && dataTitle.trim()) {
-                resolve(dataTitle.trim() || 'Тема');
+                if (dataTitle && dataTitle.trim()) {
+                    resolve(dataTitle.trim() || 'Тема');
+                    return;
+                }
+
+                title = title.replace(/^[✅❌🔴📌📁🛡️🏙️⏳]\s*/g, '');
+
+                const prefixes = [
+                    'Одобрено', 'Отказано', 'На рассмотрении', 'Рассмотрено',
+                    'Актуальное', 'В архиве', 'Северный округ', 'Москва',
+                    'Южный округ', 'Восточный округ', 'Западный округ',
+                    'Приморский округ', 'Федеральный округ', 'Chandler',
+                    'Информация', 'Важно', 'Чёрный список', 'Черный список'
+                ];
+
+                for (const prefix of prefixes) {
+                    const regex = new RegExp(`^${prefix}\\s+`, 'i');
+                    title = title.replace(regex, '');
+                }
+
+                const numberMatch = title.match(/^(\d+)\s+/);
+                if (numberMatch) {
+                    title = numberMatch[1];
+                }
+
+                title = title.trim();
+
+                resolve(title || 'Тема');
                 return;
             }
 
-            title = title.replace(/^[✅❌🔴📌📁🛡️🏙️⏳]\s*/g, '');
+            resolve('Тема');
+        });
+    }
 
-            const prefixes = [
-                'Одобрено', 'Отказано', 'На рассмотрении', 'Рассмотрено',
-                'Актуальное', 'В архиве', 'Северный округ', 'Москва',
-                'Южный округ', 'Восточный округ', 'Западный округ',
-                'Приморский округ', 'Федеральный округ', 'Chandler',
-                'Информация', 'Важно', 'Чёрный список', 'Черный список'
-            ];
-
-            for (const prefix of prefixes) {
-                const regex = new RegExp(`^${prefix}\\s+`, 'i');
-                title = title.replace(regex, '');
-            }
-
-            const numberMatch = title.match(/^(\d+)\s+/);
-            if (numberMatch) {
-                title = numberMatch[1];
-            }
-
-            title = title.trim();
-
-            resolve(title || 'Тема');
-            return;
-        }
-
-        resolve('Тема');
-    });
-}
     async function getMessageContent() {
         return new Promise((resolve) => {
             const element = document.querySelector('.message:first-child .bbWrapper') ||
@@ -472,10 +536,7 @@ async function getCleanTitle() {
         if (!threadId) return false;
 
         const csrfToken = getCsrfToken();
-        if (!csrfToken) {
-            return false;
-        }
-
+        if (!csrfToken) return false;
 
         const cleanTitle = await getCleanTitle();
         const messageContent = await getMessageContent();
@@ -513,17 +574,9 @@ async function getCleanTitle() {
 
             if (response.ok) {
                 const result = await response.json().catch(() => ({}));
-                if (result.status === 'ok') {
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
+                return result.status === 'ok' || !result.errors;
             }
+            return false;
         } catch (error) {
             console.error('Ошибка сети:', error);
             return false;
@@ -674,10 +727,7 @@ async function getCleanTitle() {
                         });
 
                         if (response.ok) {
-                            const result = await response.json().catch(() => ({ status: 'ok' }));
-                            if (result.status === 'ok') {
-                                needReload = true;
-                            }
+                            needReload = true;
                         }
                     } catch (e) {
                         console.error('Ошибка при изменении статуса темы:', e);
@@ -713,10 +763,7 @@ async function getCleanTitle() {
                         });
 
                         if (response.ok) {
-                            const result = await response.json().catch(() => ({ status: 'ok' }));
-                            if (result.status === 'ok') {
-                                needReload = true;
-                            }
+                            needReload = true;
                         }
                     } catch (e) {
                         console.error('Ошибка при закреплении темы:', e);
@@ -764,13 +811,6 @@ async function getCleanTitle() {
                 select2Element.dispatchEvent(new Event(eventName, { bubbles: true }));
             });
 
-            setTimeout(() => {
-                const select2Option = document.querySelector(`[data-prefix-id="${prefixId}"]`);
-                if (select2Option) {
-                    select2Option.click();
-                }
-            }, 100);
-
             return true;
         }
 
@@ -779,77 +819,138 @@ async function getCleanTitle() {
 
     function setupTemplateHandler() {
         let activeTemplate = null;
-        let replyButtonClicked = false;
 
         document.addEventListener('click', async function(e) {
-            const replyBtn = e.target.closest('[data-action="reply"]') ||
-                            e.target.closest('.button--primary') ||
-                            e.target.closest('.js-quickReply') ||
-                            e.target.closest('[data-xf-click*="reply"]') ||
-                            e.target.closest('[data-xf-click*="quote"]') ||
-                            e.target.closest('.js-replyButton') ||
-                            e.target.closest('a[href*="post-reply"]');
+            const submitBtn = e.target.closest('button[type="submit"].button--primary');
 
-            if (replyBtn && activeTemplate) {
-                replyButtonClicked = true;
+            if (submitBtn && activeTemplate) {
+                e.preventDefault();
+                e.stopPropagation();
 
-                setTimeout(async () => {
-                    if (activeTemplate && replyButtonClicked) {
-                        const needReload = await applyTemplateActions(activeTemplate);
+                await applyTemplateActions(activeTemplate);
 
-                        if (activeTemplate.prefix && activeTemplate.prefix !== "0") {
-                            setTimeout(() => {
-                                applyPrefixInReplyForm(activeTemplate.prefix);
-                            }, 500);
-                        }
+                const form = submitBtn.closest('form');
+                if (form) {
+                    form.submit();
+                }
 
-                        if (needReload) {
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 1000);
-                        }
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                window.location.reload();
 
-                        activeTemplate = null;
-                        replyButtonClicked = false;
-                    }
-                }, 1000);
+                activeTemplate = null;
             }
         }, true);
 
         window.setActiveTemplate = (template) => {
             activeTemplate = template;
-            replyButtonClicked = false;
         };
+    }
 
-        const observer = new MutationObserver((mutations) => {
-            if (activeTemplate && activeTemplate.prefix && activeTemplate.prefix !== "0") {
-                for (const mutation of mutations) {
-                    if (mutation.addedNodes.length) {
-                        for (const node of mutation.addedNodes) {
-                            if (node.nodeType === 1) {
-                                const hasPrefixField = node.querySelector && (
-                                    node.querySelector('select[name*="prefix"]') ||
-                                    node.querySelector('input[name*="prefix"]') ||
-                                    node.matches?.('select[name*="prefix"]') ||
-                                    node.matches?.('input[name*="prefix"]')
-                                );
+    function createTemplatesDropdown() {
+        const replyButton = document.querySelector('button[type="submit"].button--primary.button--icon--reply');
+        if (!replyButton) return;
 
-                                if (hasPrefixField) {
-                                    setTimeout(() => {
-                                        applyPrefixInReplyForm(activeTemplate.prefix);
-                                    }, 300);
-                                }
+        if (document.querySelector('.nx-templates-dropdown')) return;
+
+        const buttonContainer = replyButton.parentElement;
+        if (!buttonContainer) return;
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'nx-templates-dropdown';
+        
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'nx-templates-btn';
+        button.innerHTML = '<span>▼</span> <span>Шаблоны</span>';
+        
+        const menu = document.createElement('div');
+        menu.className = 'nx-templates-menu';
+        
+        function renderTemplatesMenu() {
+            menu.innerHTML = '';
+
+            if (db.folders.length === 0) {
+                const emptyItem = document.createElement('div');
+                emptyItem.className = 'nx-template-item';
+                emptyItem.textContent = 'Шаблонов нет';
+                emptyItem.style.color = '#666';
+                emptyItem.style.cursor = 'default';
+                menu.appendChild(emptyItem);
+                return;
+            }
+
+            let hasTemplates = false;
+            db.folders.forEach(folder => {
+                if (folder.templates.length === 0) return;
+
+                hasTemplates = true;
+
+                const folderHeader = document.createElement('div');
+                folderHeader.className = 'nx-folder-header';
+                folderHeader.textContent = folder.name;
+                menu.appendChild(folderHeader);
+
+                folder.templates.forEach(template => {
+                    const item = document.createElement('div');
+                    item.className = 'nx-template-item';
+                    item.textContent = template.name;
+                    item.onclick = () => {
+                        const editor = document.querySelector('.fr-element.fr-view') ||
+                                      document.querySelector('.js-editor') ||
+                                      document.querySelector('textarea[name="message"]');
+
+                        if (editor) {
+                            if (editor.tagName === 'TEXTAREA') {
+                                editor.value += template.text;
+                                editor.dispatchEvent(new Event('input', { bubbles: true }));
+                            } else {
+                                editor.focus();
+                                document.execCommand('insertHTML', false, template.text.replace(/\n/g, '<br>'));
                             }
                         }
-                    }
-                }
+
+                        window.setActiveTemplate(template);
+
+                        const modal = document.getElementById('nx-modal-v17');
+                        if (modal) {
+                            modal.remove();
+                            createFloatButton();
+                        }
+
+                        menu.classList.remove('show');
+                    };
+                    menu.appendChild(item);
+                });
+            });
+
+            if (!hasTemplates) {
+                const emptyItem = document.createElement('div');
+                emptyItem.className = 'nx-template-item';
+                emptyItem.textContent = 'Шаблонов нет';
+                emptyItem.style.color = '#666';
+                emptyItem.style.cursor = 'default';
+                menu.appendChild(emptyItem);
+            }
+        }
+
+        renderTemplatesMenu();
+
+        button.onclick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            menu.classList.toggle('show');
+        };
+
+        document.addEventListener('click', (e) => {
+            if (!dropdown.contains(e.target)) {
+                menu.classList.remove('show');
             }
         });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+        dropdown.appendChild(button);
+        dropdown.appendChild(menu);
+
+        buttonContainer.insertBefore(dropdown, replyButton);
     }
 
     function renderFolders() {
@@ -928,6 +1029,30 @@ async function getCleanTitle() {
         });
     }
 
+    function getPrefixName(prefixId) {
+        const prefixes = {
+            "0": "Не менять",
+            "2": "Рассмотрено",
+            "3": "На рассмотрении",
+            "4": "Южный округ",
+            "5": "Восточный округ",
+            "6": "Западный округ",
+            "7": "Отказано",
+            "8": "Информация",
+            "9": "Одобрено",
+            "10": "Чёрный список",
+            "11": "Приморский округ",
+            "13": "Федеральный округ",
+            "14": "Актуальное",
+            "16": "В архиве",
+            "18": "Chandler",
+            "19": "Важно",
+            "20": "Северный округ",
+            "21": "Москва"
+        };
+        return prefixes[prefixId] || `ID: ${prefixId}`;
+    }
+
     function renderTemplates() {
         const list = document.getElementById('t-list-v17');
         if(!list) return;
@@ -987,8 +1112,10 @@ async function getCleanTitle() {
                 window.setActiveTemplate(t);
 
                 const modal = document.getElementById('nx-modal-v17');
-                if (modal) modal.remove();
-                createFloatButton();
+                if (modal) {
+                    modal.remove();
+                    createFloatButton();
+                }
             };
 
             card.querySelector('.btn-edit-t').onclick = async (e) => {
@@ -1013,30 +1140,6 @@ async function getCleanTitle() {
 
             list.appendChild(card);
         });
-    }
-
-    function getPrefixName(prefixId) {
-        const prefixes = {
-            "0": "Не менять",
-            "2": "Рассмотрено",
-            "3": "На рассмотрении",
-            "4": "Южный округ",
-            "5": "Восточный округ",
-            "6": "Западный округ",
-            "7": "Отказано",
-            "8": "Информация",
-            "9": "Одобрено",
-            "10": "Чёрный список",
-            "11": "Приморский округ",
-            "13": "Федеральный округ",
-            "14": "Актуальное",
-            "16": "В архиве",
-            "18": "Chandler",
-            "19": "Важно",
-            "20": "Северный округ",
-            "21": "Москва"
-        };
-        return prefixes[prefixId] || `ID: ${prefixId}`;
     }
 
     async function showTemplateEditor(template = null, index = -1) {
@@ -1160,6 +1263,7 @@ async function getCleanTitle() {
 
             const folder = db.folders.find(x => x.id === db.activeFolderId);
             const newTemplate = {
+                id: template?.id || Date.now(),
                 name: name,
                 text: text,
                 prefix: document.getElementById('in-p').value,
@@ -1273,7 +1377,7 @@ async function getCleanTitle() {
             floatBtn = document.createElement('button');
             floatBtn.id = 'nx-float-trigger';
             floatBtn.className = 'nx-float-btn';
-            floatBtn.innerHTML = '☰ NexusScript';
+            floatBtn.innerHTML = '⚙️ NexusScript';
             floatBtn.onclick = openManager;
             document.body.appendChild(floatBtn);
         }
@@ -1290,9 +1394,17 @@ async function getCleanTitle() {
             if (!floatBtn && !document.getElementById('nx-modal-v17')) {
                 createFloatButton();
             }
+            
+            if (!document.querySelector('.nx-templates-dropdown')) {
+                createTemplatesDropdown();
+            }
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
+        
+        setTimeout(() => {
+            createTemplatesDropdown();
+        }, 1000);
     }
 
     if (document.readyState === 'loading') {
