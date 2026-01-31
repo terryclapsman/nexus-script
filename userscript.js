@@ -2,7 +2,7 @@
 // @name         NexusScript
 // @description  Форумный скрипт для Nexus
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @author       TerryClapsman
 // @match        https://forum.keeper-nexus.com/threads/*
 // ==/UserScript==
@@ -482,8 +482,6 @@
                                 document.querySelector('h1');
 
             if (titleElement) {
-                let title = titleElement.textContent.trim();
-
                 const dataTitle = titleElement.getAttribute('data-title') ||
                                 titleElement.getAttribute('data-original-title');
 
@@ -491,8 +489,6 @@
                     resolve(dataTitle.trim() || 'Тема');
                     return;
                 }
-
-                title = title.replace(/^[✅❌🔴📌📁🛡️🏙️⏳]\s*/g, '');
 
                 const prefixes = [
                     'Одобрено', 'Отказано', 'На рассмотрении', 'Рассмотрено',
@@ -502,8 +498,20 @@
                     'Информация', 'Важно', 'Чёрный список', 'Черный список'
                 ];
 
+                const clone = titleElement.cloneNode(true);
+                // Удаляем элементы, которые выглядят как префиксы (для новых span с классами)
+                Array.from(clone.children).forEach(child => {
+                    if (prefixes.some(p => child.textContent.trim() === p)) {
+                        child.remove();
+                    }
+                });
+
+                let title = clone.textContent.trim();
+
+                title = title.replace(/^[✅❌🔴📌📁🛡️🏙️⏳]\s*/g, '');
+
                 for (const prefix of prefixes) {
-                    const regex = new RegExp(`^${prefix}\\s+`, 'i');
+                    const regex = new RegExp(`^${prefix}\\s*`, 'i');
                     title = title.replace(regex, '');
                 }
 
@@ -901,11 +909,11 @@
 
                         if (editor) {
                             if (editor.tagName === 'TEXTAREA') {
-                                editor.value += template.text;
+                                editor.value = editor.value + template.text;
                                 editor.dispatchEvent(new Event('input', { bubbles: true }));
                             } else {
                                 editor.focus();
-                                document.execCommand('insertHTML', false, template.text.replace(/\n/g, '<br>'));
+                                editor.innerHTML = editor.innerHTML + template.text.replace(/\n/g, '<br>');
                             }
                         }
 
@@ -1101,11 +1109,11 @@
 
                 if (editor) {
                     if (editor.tagName === 'TEXTAREA') {
-                        editor.value += t.text;
+                        editor.value = editor.value + t.text;
                         editor.dispatchEvent(new Event('input', { bubbles: true }));
                     } else {
                         editor.focus();
-                        document.execCommand('insertHTML', false, t.text.replace(/\n/g, '<br>'));
+                        editor.innerHTML = editor.innerHTML + t.text.replace(/\n/g, '<br>');
                     }
                 }
 
@@ -1368,6 +1376,176 @@
         overlay.focus();
     }
 
+    const verifiedUsers = new Set();
+    const DB_URL = 'https://nexusscript-online-default-rtdb.europe-west1.firebasedatabase.app/users';
+
+    function sanitizeUsername(username) {
+        return username.replace(/[.#$/[\]]/g, '_');
+    }
+
+    function getCurrentUsername() {
+        const userNavNode = document.querySelector('.p-navgroup--member .p-navgroup-link--user');
+        if (userNavNode) {
+            const textSpan = userNavNode.querySelector('.p-navgroup-linkText');
+            if (textSpan && textSpan.textContent.trim()) {
+                return textSpan.textContent.trim();
+            }
+            const img = userNavNode.querySelector('img');
+            if (img && img.alt) {
+                return img.alt.trim();
+            }
+        }
+
+        const exactAccountLink = document.querySelector('a[href="/account/"]');
+        if (exactAccountLink) {
+            const textSpan = exactAccountLink.querySelector('.p-navgroup-linkText');
+            if (textSpan && textSpan.textContent.trim()) {
+                return textSpan.textContent.trim();
+            }
+            const img = exactAccountLink.querySelector('img');
+            if (img && img.alt) {
+                return img.alt.trim();
+            }
+            const title = exactAccountLink.getAttribute('title');
+            if (title && title !== 'Ваш аккаунт' && title !== 'Account' && !title.includes('Alerts')) {
+                return title.trim();
+            }
+        }
+        
+        return null;
+    }
+
+    function sendHeartbeat(retryCount = 0) {
+        const rawUsername = getCurrentUsername();
+        
+        if (!rawUsername) {
+            if (retryCount < 5) {
+                setTimeout(() => sendHeartbeat(retryCount + 1), 2000);
+            }
+            return;
+        }
+
+        const username = sanitizeUsername(rawUsername);
+
+        fetch(`${DB_URL}/${username}.json`, {
+            method: 'PUT',
+            body: JSON.stringify(Date.now())
+        })
+        .then(() => {
+        })
+        .catch(err => {
+            console.error('NexusScript Heartbeat Error:', err);
+        });
+    }
+
+    function fetchOnlineUsers() {
+        fetch(`${DB_URL}.json`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data) return;
+
+                const now = Date.now();
+                const fiveMinutes = 5 * 60 * 1000;
+                
+                verifiedUsers.clear();
+                
+                const onlineNames = [];
+                Object.entries(data).forEach(([username, lastSeen]) => {
+                        verifiedUsers.add(username);
+                        onlineNames.push(username);
+                });
+                
+                document.querySelectorAll('.nx-verified-badge').forEach(el => el.remove());
+                document.querySelectorAll('.nx-badge-processed').forEach(el => el.classList.remove('nx-badge-processed'));
+                
+                addNexusBadges();
+            })
+            .catch(err => console.error('NexusScript Fetch Error:', err));
+    }
+
+    setInterval(sendHeartbeat, 60000);
+    setInterval(fetchOnlineUsers, 60000);
+    
+    setTimeout(() => {
+        sendHeartbeat();
+        fetchOnlineUsers();
+    }, 2000);
+
+    function addNexusBadges() {
+        const usernameElements = document.querySelectorAll('a.username, a[href*="/members/"], .user-name, span[class*="username--style"]');
+
+        usernameElements.forEach(el => {
+            let targetEl = el;
+
+            if (el.tagName === 'SPAN') {
+                const parentLink = el.closest('a');
+                if (parentLink) {
+                    targetEl = parentLink;
+                }
+            }
+
+            if (targetEl.classList.contains('nx-badge-processed')) return;
+            
+            if (targetEl.nextElementSibling && targetEl.nextElementSibling.classList.contains('nx-verified-badge')) {
+                targetEl.classList.add('nx-badge-processed');
+                return;
+            }
+
+            const rawUsername = targetEl.textContent.trim();
+            const username = sanitizeUsername(rawUsername);
+            
+            if (!verifiedUsers.has(username)) return;
+
+            if (targetEl.closest('.p-navgroup')) return;
+            if (targetEl.getAttribute('href') === '/account/') return;
+
+            // --- ЛОГИКА ОПРЕДЕЛЕНИЯ ЦВЕТА ---
+            let userColor = '#fcc603'; // Цвет по умолчанию (золотой)
+            
+            const coloredSpan = targetEl.querySelector('[class*="username--style"]');
+            const colorSource = coloredSpan || targetEl;
+
+            const computedStyle = window.getComputedStyle(colorSource);
+            if (computedStyle && computedStyle.color) {
+                userColor = computedStyle.color;
+            }
+
+            const isProfileHeader = targetEl.closest('h1') || targetEl.closest('.memberHeader-name') || targetEl.closest('.p-title-value');
+            const isSmallList = targetEl.closest('.listInline') || targetEl.closest('.block-body');
+            
+            let iconSize = '14';
+            let fontSize = '0.85em';
+            let marginLeft = '3px';
+
+            if (isProfileHeader) {
+                iconSize = '18';
+                fontSize = '1em';
+                marginLeft = '4px';
+            } else if (isSmallList) {
+                iconSize = '12'; 
+                fontSize = '0.75em';
+                marginLeft = '2px';
+            }
+
+            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="${iconSize}" height="${iconSize}"><path d="M512 256c0-37.7-23.7-69.9-57.1-82.4 14.7-32.4 8.8-71.9-17.9-98.6-26.7-26.7-66.2-32.6-98.6-17.9C325.9 23.7 293.7 0 256 0s-69.9 23.7-82.4 57.1c-32.4-14.7-71.9-8.8-98.6 17.9-26.7 26.7-32.6 66.2-17.9 98.6C23.7 186.1 0 218.3 0 256s23.7 69.9 57.1 82.4c-14.7 32.4-8.8 71.9 17.9 98.6 26.7 26.7 66.2 32.6 98.6 17.9 12.5 33.3 44.7 57.1 82.4 57.1s69.9-23.7 82.4-57.1c32.4 14.7 71.9 8.8 98.6-17.9 26.7-26.7 32.6-66.2 17.9-98.6 33.4-12.5 57.1-44.7 57.1-82.4zm-144.5-43L228.2 352.3c-5.3 5.3-13.8 5.3-19.1 0L144.5 288c-5.3-5.3-5.3-13.8 0-19.1l22.3-22.3c5.3-5.3 13.8-5.3 19.1 0l42.8 42.8L326 190.6c5.3-5.3 13.8-5.3 19.1 0l22.3 22.3c5.3 5.4 5.3 13.9 0 19.1z" fill="currentColor"/></svg>`;
+
+            const badgeHtml = `
+                <span class="nx-verified-badge" title="Пользователь NexusScript" style="color: ${userColor}; font-size: ${fontSize}; margin-left: ${marginLeft}; vertical-align: middle; display: inline-flex; align-items: center;">
+                    ${svgContent}
+                </span>
+            `;
+
+            targetEl.insertAdjacentHTML('afterend', badgeHtml);
+            targetEl.classList.add('nx-badge-processed');
+            
+        });
+    }
+
     function createFloatButton() {
         if (floatBtn) {
             floatBtn.remove();
@@ -1389,8 +1567,11 @@
 
         createFloatButton();
         setupTemplateHandler();
+        addNexusBadges();
 
         const observer = new MutationObserver(() => {
+            addNexusBadges();
+            
             if (!floatBtn && !document.getElementById('nx-modal-v17')) {
                 createFloatButton();
             }
