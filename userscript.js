@@ -2040,7 +2040,7 @@
                         document.getElementById('btn-menu-appoint').onclick = () => renderAppointmentForm();
                     };
 
-                    async function grantModeratorRole(mID, level, statusElement) {
+                    async function grantModeratorRole(mID, level, isSZM, statusElement) {
                         try {
                             const promoUrl = `https://forum.keeper-nexus.com/promote/index?mID=${mID}`;
                             const response = await fetch(promoUrl);
@@ -2060,7 +2060,10 @@
                                 '1': '(01) Младший Модератор',
                                 '2': '(02) Модератор',
                                 '3': '(03) Старший Модератор',
-                                '4': '(04) Специальный Модератор'
+                                '4': isSZM ? '(04) Следящий за Модерацией' : '(04) Специальный Модератор',
+                                '5': '(05) Куратор модерации',
+                                '6': '(06) Заместитель ГМ',
+                                '7': '(07) Главный Модератор'
                             };
                             const targetRoleName = levelToName[level];
                             if (!targetRoleName) return;
@@ -2150,27 +2153,20 @@
                             if (xfToken) formData.append('_xfToken', xfToken);
                             
                             targetForm.querySelectorAll('input[type="hidden"]').forEach(input => {
-                                if (input.name !== '_xfToken') {
-                                    formData.append(input.name, input.value);
-                                }
+                                if (input.name !== '_xfToken') formData.append(input.name, input.value);
                             });
 
-                            let found = false;
                             const choices = targetForm.querySelectorAll('.inputChoices-choice, li, label');
-                            const allRoles = [];
-                            
+                            const handledCheckboxes = new Set();
+
                             choices.forEach(el => {
                                 const checkbox = el.querySelector('input[type="checkbox"]') || (el.tagName === 'INPUT' && el.type === 'checkbox' ? el : null);
-                                if (!checkbox) return;
+                                if (!checkbox || handledCheckboxes.has(checkbox)) return;
 
                                 let roleName = '';
                                 const labelEl = el.querySelector('.iconic-label') || el.querySelector('span') || (el.tagName === 'LABEL' ? el : el.closest('label'));
-                                
-                                if (labelEl) {
-                                    roleName = labelEl.textContent.trim();
-                                } else {
-                                    roleName = el.textContent.trim();
-                                }
+                                if (labelEl) roleName = labelEl.textContent.trim();
+                                else roleName = el.textContent.trim();
 
                                 if (!roleName || roleName.length < 2) return;
 
@@ -2178,38 +2174,30 @@
                                 const cleanTargetName = targetRoleName.replace(/\s+/g, ' ').toLowerCase();
                                 const isTarget = cleanRoleName.includes(cleanTargetName);
                                 
-                                if (!allRoles.some(r => r.checkbox === checkbox)) {
-                                    allRoles.push({ name: roleName, checkbox: checkbox, isTarget: isTarget });
-                                    if (isTarget) found = true;
+                                if (checkbox.checked && !isTarget) {
+                                    formData.append(checkbox.name, checkbox.value);
                                 }
+                                handledCheckboxes.add(checkbox);
                             });
 
-                            if (!found) {
-                                targetForm.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-                                    if (allRoles.some(r => r.checkbox === checkbox)) return;
+                            // Дополнительная проверка для всех чекбоксов, которые могли быть пропущены
+                            targetForm.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                                if (handledCheckboxes.has(checkbox)) return;
+                                
+                                if (checkbox.checked) {
                                     const label = targetForm.querySelector(`label[for="${checkbox.id}"]`) || checkbox.closest('label');
-                                    if (label) {
-                                        const roleName = label.textContent.trim();
-                                        const cleanRoleName = roleName.replace(/\s+/g, ' ').toLowerCase();
-                                        const cleanTargetName = targetRoleName.replace(/\s+/g, ' ').toLowerCase();
-                                        if (cleanRoleName.includes(cleanTargetName)) {
-                                            found = true;
-                                            allRoles.push({ name: roleName, checkbox: checkbox, isTarget: true });
-                                        }
+                                    const roleName = label ? label.textContent.trim() : '';
+                                    const cleanRoleName = roleName.replace(/\s+/g, ' ').toLowerCase();
+                                    const cleanTargetName = targetRoleName.replace(/\s+/g, ' ').toLowerCase();
+                                    
+                                    if (!cleanRoleName.includes(cleanTargetName)) {
+                                        formData.append(checkbox.name, checkbox.value);
                                     }
-                                });
-                            }
-
-                            allRoles.forEach(role => {
-                            if (role.checkbox.checked) {
-                                    formData.append(role.checkbox.name, role.checkbox.value);
                                 }
                             });
 
                             targetForm.querySelectorAll('select, input[type="text"], input[type="radio"]:checked').forEach(el => {
-                                if (el.name && !formData.has(el.name)) {
-                                    formData.append(el.name, el.value);
-                                }
+                                if (el.name && !formData.has(el.name)) formData.append(el.name, el.value);
                             });
 
                             const saveUrl = action.startsWith('http') ? action : `https://forum.keeper-nexus.com${action}`;
@@ -2220,7 +2208,7 @@
                             });
 
                             if (!saveResponse.ok) throw new Error('Ошибка при сохранении ролей');
-                            if (statusElement) statusElement.textContent = 'Снятие ролей: успешно!';
+                            if (statusElement) statusElement.textContent = 'Процесс...';
                         } catch (err) {
                             console.error('NexusScript Role Removal Error:', err);
                             throw err;
@@ -2548,6 +2536,11 @@
 
                                 <div id="ap-vars-container" style="margin-top:15px;"></div>
 
+                                <div class="nx-szm-check" id="szm-container-ap" style="display:none; margin-top:15px;">
+                                    <input type="checkbox" class="nx-checkbox" id="is-szm-ap">
+                                    <label for="is-szm-ap" class="nx-szm-label">❔ Модератор является СЗМом?</label>
+                                </div>
+
                                 <div id="ap-status" class="nx-status-msg" style="display:none; margin-top:15px;"></div>
                                 <button class="nx-btn-archive" id="btn-create-ap" style="width:100%; margin-top:20px;">СОЗДАТЬ ДОСЬЕ</button>
                             </div>
@@ -2557,6 +2550,17 @@
                         const varsContainer = document.getElementById('ap-vars-container');
                         const btnExport = document.getElementById('btn-export-tpl-ap');
                         const btnDelete = document.getElementById('btn-del-tpl-ap');
+                        const levelInput = document.getElementById('sel-lvl-ap');
+                        const szmContainer = document.getElementById('szm-container-ap');
+
+                        levelInput.oninput = () => {
+                            if (levelInput.value.trim() === '4') {
+                                szmContainer.style.display = 'flex';
+                            } else {
+                                szmContainer.style.display = 'none';
+                                document.getElementById('is-szm-ap').checked = false;
+                            }
+                        };
 
                         const updateVars = () => {
                             const tplIndex = selTpl.value;
@@ -2795,7 +2799,7 @@
                                     const mIDMatch = faLink.match(/members\/.*?\.(\d+)\//) || faLink.match(/members\/(\d+)\//);
                                     const mID = mIDMatch ? mIDMatch[1] : null;
                                     if (mID) {
-                                        await grantModeratorRole(mID, modLevel, null);
+                                        await grantModeratorRole(mID, modLevel, document.getElementById('is-szm-ap').checked, status);
                                     }
                                 }
 
