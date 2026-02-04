@@ -38,10 +38,12 @@
         },
         
         async importTemplate(code) {
-            const type = code.includes('-') && code.split('-')[0].length === 3 ? 'regular' : 'appointment';
+            const cleanCode = code.trim().toUpperCase();
+            const parts = cleanCode.split('-');
+            const type = (parts.length === 2) ? 'regular' : 'appointment';
             const path = type === 'appointment' ? 'templates' : 'regular_templates';
             try {
-                const response = await fetch(`${this.baseUrl}/${path}/${code}.json`);
+                const response = await fetch(`${this.baseUrl}/${path}/${cleanCode}.json`);
                 if (!response.ok) throw new Error('Ошибка при импорте');
                 const data = await response.json();
                 if (!data) throw new Error('Шаблон не найден');
@@ -53,11 +55,11 @@
         
         generateCode(type = 'appointment') {
             const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const part = () => Array.from({length: 2}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+            
             if (type === 'appointment') {
-                const part = () => Array.from({length: 2}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
                 return `${part()}-${part()}-${part()}`;
             } else {
-                const part = () => Array.from({length: 3}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
                 return `${part()}-${part()}`;
             }
         }
@@ -1525,6 +1527,7 @@
                     <b style="color:#af9159;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.name}</b>
                     <div style="display:flex; gap:8px;flex-shrink:0;">
                         <button class="nx-btn-main btn-ins" style="padding:5px 15px; font-size:12px">ВСТАВИТЬ</button>
+                        <button class="btn-small btn-exp-t" title="Поделиться шаблоном" style="background: rgba(175, 145, 89, 0.1); border: 1px solid rgba(175, 145, 89, 0.3);">📤</button>
                         <button class="btn-small btn-edit-t" title="Редактировать шаблон">✏️</button>
                         <button class="btn-small btn-del-t" title="Удалить шаблон">🗑️</button>
                     </div>
@@ -1560,6 +1563,29 @@
                 if (modal) {
                     modal.remove();
                     createFloatButton();
+                }
+            };
+
+            card.querySelector('.btn-exp-t').onclick = async (e) => {
+                e.stopPropagation();
+                try {
+                    const code = await FirebaseService.exportTemplate(t, 'regular');
+                    if (!t.exportCode) {
+                        t.exportCode = code;
+                        save();
+                    }
+                    await showCustomDialog({
+                        type: 'code',
+                        title: 'Шаблон экспортирован',
+                        message: 'Код для обмена (XX-XX):',
+                        defaultValue: code
+                    });
+                } catch (err) {
+                    showCustomDialog({
+                        type: 'alert',
+                        title: 'Ошибка',
+                        message: 'Не удалось экспортировать шаблон.'
+                    });
                 }
             };
 
@@ -1696,7 +1722,7 @@
                     await showCustomDialog({
                         type: 'code',
                         title: 'Шаблон экспортирован',
-                        message: 'Код для обмена (XXX-XXX):',
+                        message: 'Код для обмена (XX-XX):',
                         defaultValue: code
                     });
                 } catch (err) {
@@ -1846,6 +1872,7 @@
         const overlay = document.createElement('div');
         overlay.className = 'nx-overlay';
         overlay.id = 'nx-modal-v17';
+        overlay.tabIndex = 0;
 
         overlay.innerHTML = `
             <div class="nx-window">
@@ -1892,7 +1919,8 @@
                         <div id="f-list-v17"></div>
                     </div>
                     <div class="nx-content">
-                        <div style="display:flex; justify-content:flex-end; margin-bottom:20px; align-items:center;">
+                        <div style="display:flex; justify-content:flex-end; margin-bottom:20px; align-items:center; gap: 10px;">
+                            <button class="nx-btn-main" id="btn-import-tpl-main" title="Импортировать шаблон по коду" style="background: rgba(175, 145, 89, 0.1); color: #af9159; border: 1px solid rgba(175, 145, 89, 0.3); padding: 10px 15px;">📥 Импорт</button>
                             <button class="nx-btn-main" id="add-t-btn">+ Создать шаблон</button>
                         </div>
                         <div id="t-list-v17"></div>
@@ -1921,6 +1949,51 @@
                 };
 
                 document.getElementById('add-t-btn').onclick = () => showTemplateEditor();
+
+                document.getElementById('btn-import-tpl-main').onclick = async () => {
+                    const code = await showCustomDialog({
+                        type: 'prompt',
+                        title: 'Импорт шаблона',
+                        message: 'Введите код шаблона (XX-XX или XX-XX-XX):',
+                        placeholder: 'XX-XX'
+                    });
+
+                    if (code && code.trim()) {
+                        try {
+                            const { data, type } = await FirebaseService.importTemplate(code.trim().toUpperCase());
+                            
+                            if (type === 'appointment') {
+                                data.exportCode = code.trim().toUpperCase();
+                                db.appointmentTemplates.push(data);
+                                save();
+                                showCustomDialog({
+                                    type: 'alert',
+                                    title: 'Успех',
+                                    message: `Шаблон постановления "${data.name}" успешно импортирован! Его можно найти в панели ГМ.`
+                                });
+                            } else {
+                                data.exportCode = code.trim().toUpperCase();
+                                const currentFolder = db.folders.find(f => f.id === db.activeFolderId);
+                                if (currentFolder) {
+                                    currentFolder.templates.push(data);
+                                    save();
+                                    renderTemplates();
+                                    showCustomDialog({
+                                        type: 'alert',
+                                        title: 'Успех',
+                                        message: `Обычный шаблон "${data.name}" успешно импортирован в текущую папку!`
+                                    });
+                                }
+                            }
+                        } catch (err) {
+                            showCustomDialog({
+                                type: 'alert',
+                                title: 'Ошибка',
+                                message: 'Не удалось импортировать шаблон. Проверьте код.'
+                            });
+                        }
+                    }
+                };
             } else {
                 if (isCheckingAccess && !cachedHasModAccess) {
                     main.innerHTML = `
@@ -2283,6 +2356,10 @@
                                  let totalPages = 1;
 
                                  while (currentPage <= totalPages) {
+                                     if (totalPages > 1) {
+                                         status.textContent = `Поиск досье (стр. ${currentPage}/${totalPages})...`;
+                                     }
+
                                      const pageUrl = currentPage === 1 
                                          ? `https://forum.keeper-nexus.com/forums/${serverId}/`
                                          : `https://forum.keeper-nexus.com/forums/${serverId}/page-${currentPage}`;
@@ -2296,6 +2373,12 @@
                                          const pageInput = doc.querySelector('.js-pageJumpPage');
                                          if (pageInput) {
                                              totalPages = parseInt(pageInput.getAttribute('max')) || 1;
+                                         } else {
+                                             const pageNavItems = doc.querySelectorAll('.pageNav-main .pageNav-page');
+                                             if (pageNavItems.length > 0) {
+                                                 const lastPageItem = pageNavItems[pageNavItems.length - 1];
+                                                 totalPages = parseInt(lastPageItem.textContent.trim()) || 1;
+                                             }
                                          }
                                      }
 
@@ -2530,7 +2613,7 @@
                             const code = await showCustomDialog({
                                 type: 'prompt',
                                 title: 'Импорт шаблона',
-                                message: 'Введите код шаблона (XX-XX-XX или XXX-XXX):',
+                                message: 'Введите код шаблона (XX-XX или XX-XX-XX):',
                                 placeholder: 'XX-XX-XX'
                             });
 
@@ -2583,7 +2666,7 @@
                                 await showCustomDialog({
                                     type: 'code',
                                     title: 'Шаблон экспортирован',
-                                    message: 'Код для общего доступа (скопируйте):',
+                                    message: 'Код для обмена (XX-XX-XX):',
                                     defaultValue: code
                                 });
                             } catch (err) {
@@ -2891,16 +2974,20 @@
              });
          };
 
-        document.getElementById('nx-close').onclick = () => {
-            overlay.remove();
-            createFloatButton();
-        };
-
-        overlay.onkeydown = (e) => {
+        const handleEsc = (e) => {
             if (e.key === 'Escape') {
                 overlay.remove();
                 createFloatButton();
+                window.removeEventListener('keydown', handleEsc);
             }
+        };
+
+        window.addEventListener('keydown', handleEsc);
+
+        document.getElementById('nx-close').onclick = () => {
+            overlay.remove();
+            createFloatButton();
+            window.removeEventListener('keydown', handleEsc);
         };
 
         overlay.focus();
