@@ -2,7 +2,7 @@
 // @name         NexusScript
 // @description  Форумный скрипт для Nexus
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @author       TerryClapsman
 // @match        https://forum.keeper-nexus.com/*
 // ==/UserScript==
@@ -67,6 +67,7 @@
 
     let floatBtn = null;
     let activeTab = 'templates';
+    let renderUsersTabGlobal = null;
     let cachedHasModAccess = false;
     let hasCheckedAccess = false;
     let isCheckingAccess = false;
@@ -75,30 +76,30 @@
         .nx-archive-form {
             display: flex;
             flex-direction: column;
-            gap: 15px;
-            padding: 25px;
+            gap: 12px;
+            padding: 20px;
             background: #1d1d1d;
             border-radius: 12px;
             border: 1px solid #333;
-            max-width: 550px;
+            max-width: 500px;
             margin: 0 auto;
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
         .nx-form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 15px;
+            gap: 12px;
         }
         .nx-form-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
         }
         .nx-form-group.full {
             grid-column: span 2;
         }
         .nx-form-group label {
-            font-size: 11px;
+            font-size: 10px;
             color: #af9159;
             font-weight: 800;
             text-transform: uppercase;
@@ -109,9 +110,9 @@
             background: #252525;
             border: 1px solid #383838;
             color: #efefef;
-            padding: 10px 14px;
+            padding: 8px 12px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             outline: none;
             transition: all 0.2s ease;
             width: 100%;
@@ -192,6 +193,284 @@
         .nx-status-msg.error { display: block; background: #321; color: #f55; border: 1px solid #522; }
         .nx-status-msg.success { display: block; background: #121; color: #5f5; border: 1px solid #252; }
         
+        /* Стили для вкладки Пользователи */
+        .nx-users-container {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            align-items: center;
+        }
+        .nx-users-search-wrapper {
+            position: relative;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: none;
+            padding: 0 10px;
+            box-sizing: border-box;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .nx-users-search {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 14px 20px;
+            color: #eee;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+            text-align: left;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .nx-users-search:focus {
+            border-color: #af9159;
+            background: #222;
+            box-shadow: 0 0 15px rgba(175, 145, 89, 0.1), inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .nx-users-section-title {
+            color: #555;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .nx-users-section-title::before, .nx-users-section-title::after {
+            content: "";
+            height: 1px;
+            background: #333;
+            flex: 1;
+        }
+        .nx-users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
+            padding: 10px;
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .nx-user-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: default;
+            user-select: none;
+            position: relative;
+            overflow: hidden;
+            justify-content: flex-start;
+        }
+        .nx-user-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.05),
+                transparent
+            );
+            transition: 0.5s;
+        }
+        .nx-user-card:hover::before {
+            left: 100%;
+        }
+        .nx-user-card:hover {
+            border-color: #af9159;
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4), 0 0 15px rgba(175, 145, 89, 0.1);
+            background: #222;
+        }
+        .nx-user-card.developer {
+            border-color: #af9159;
+            background: rgba(175, 145, 89, 0.08);
+            cursor: pointer;
+            width: 100%;
+            max-width: 320px;
+            margin: 0 auto;
+            flex-shrink: 0;
+            min-height: 60px;
+            padding: 15px 20px;
+            box-sizing: border-box;
+            animation: devGlow 3s infinite alternate;
+        }
+        @keyframes devGlow {
+            0% { box-shadow: 0 0 5px rgba(175, 145, 89, 0.1); }
+            100% { box-shadow: 0 0 20px rgba(175, 145, 89, 0.3); }
+        }
+        .nx-user-card.developer:hover {
+            background: rgba(175, 145, 89, 0.15);
+            box-shadow: 0 0 30px rgba(175, 145, 89, 0.4);
+            transform: translateY(-6px) scale(1.03);
+        }
+        .nx-user-avatar {
+            width: 28px;
+            height: 28px;
+            background: #252525;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            flex-shrink: 0;
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: 1.5px solid transparent;
+        }
+        .nx-user-card:hover .nx-user-avatar {
+            color: #af9159;
+            background: #2a2a2a;
+            transform: rotate(360deg) scale(1.1);
+            border-color: rgba(175, 145, 89, 0.3);
+        }
+        .nx-user-card.developer .nx-user-avatar {
+            background: #af9159;
+            color: #1a1a1a;
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+        /* Reviews Section */
+        .nx-reviews-section {
+            width: 100%;
+            margin-top: 40px;
+            padding: 30px 0;
+            overflow: visible;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid #333;
+            border-bottom: 1px solid #333;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .nx-reviews-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 800;
+            color: #af9159;
+            margin-bottom: 25px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(180deg, #fff 0%, #af9159 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 10px rgba(175, 145, 89, 0.3));
+            position: relative;
+        }
+        .nx-reviews-title::after {
+            content: "";
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 2px;
+            background: #af9159;
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(175, 145, 89, 0.5);
+        }
+        .nx-reviews-viewport {
+            width: 100%;
+            overflow: visible;
+            mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+            padding: 15px 0;
+        }
+        .nx-reviews-marquee {
+            display: flex;
+            width: max-content;
+            animation: nx-marquee 35s linear infinite;
+        }
+        .nx-reviews-marquee:hover {
+            animation-play-state: paused;
+        }
+        @keyframes nx-marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .nx-review-card {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 12px 18px;
+            margin: 0 15px;
+            width: 450px;
+            min-height: 80px;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+        .nx-review-card:hover {
+            border-color: #af9159;
+            background: #222;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+        .nx-review-header {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 12px;
+            border-left: 3px solid #af9159;
+            padding-left: 12px;
+        }
+        .nx-review-nick {
+            font-weight: 700;
+            font-size: 14px;
+            color: #fff;
+        }
+        .nx-review-info {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .nx-review-text {
+            font-size: 13px;
+            color: #ccc;
+            line-height: 1.5;
+            font-style: italic;
+        }
+        .nx-user-name {
+            color: #eee;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nx-developer-badge {
+            background: #af9159;
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            margin-left: auto;
+        }
+        .nx-user-count {
+            background: #333;
+            color: #888;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
         .nx-mod-menu {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -270,20 +549,33 @@
             bottom: 20px;
             right: 20px;
             z-index: 9999;
-            background: #af9159;
-            color: #000;
-            border: 2px solid #000;
-            padding: 12px 20px;
-            border-radius: 50px;
-            font-weight: bold;
+            background: #1a1a1a;
+            border: 2px solid #af9159;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            font-family: sans-serif;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .nx-float-btn img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
         }
         .nx-float-btn:hover {
-            background: #967d4c;
-            transform: scale(1.05);
+            transform: scale(1.1) rotate(5deg);
+            border-color: #fff;
+            box-shadow: 0 0 20px rgba(175, 145, 89, 0.4);
+        }
+        .nx-float-btn:hover img {
+            transform: scale(1.1);
         }
         .nx-overlay {
             position: fixed;
@@ -481,6 +773,8 @@
             padding: 25px;
             min-width: 300px;
             max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .nx-custom-dialog h3 {
@@ -681,7 +975,7 @@
             cursor: not-allowed;
         }
         .u-scrollButtons {
-            bottom: 80px !important;
+            bottom: 90px !important;
         }
     `;
 
@@ -1844,7 +2138,9 @@
                         const strongText = banner.querySelector('strong')?.textContent.trim() || '';
                         if (strongText.includes('След. за Модерацией') || 
                             strongText.includes('Куратор модерации') || 
-                            strongText.includes('СЗМ')) {
+                            strongText.includes('Заместитель ГМ') ||
+                            strongText.includes('Следящий за Discord') ||
+                            strongText.includes('Команда Хранителя')) {
                             cachedHasModAccess = true;
                             break;
                         }
@@ -1893,6 +2189,7 @@
                 <div class="nx-nav">
                     <button class="nx-nav-btn ${activeTab === 'templates' ? 'active' : ''}" data-tab="templates">📁 Папки шаблонов</button>
                     <button class="nx-nav-btn ${activeTab === 'modpanel' ? 'active' : ''}" data-tab="modpanel">🛡️ Панель гл. мод.</button>
+                    <button class="nx-nav-btn ${activeTab === 'users' ? 'active' : ''}" data-tab="users">👥 Пользователи</button>
                 </div>
                 <div class="nx-main"></div>
             </div>
@@ -1905,6 +2202,87 @@
             overlay.querySelectorAll('.nx-nav-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.tab === activeTab);
             });
+
+            const renderUsersTab = () => {
+                renderUsersTabGlobal = renderUsersTab;
+                const users = Array.from(verifiedUsers).filter(u => u !== 'Terry_Clapsman').sort();
+                
+                main.innerHTML = `
+                    <div class="nx-users-container">
+                        <div class="nx-users-search-wrapper">
+                            <input type="text" class="nx-users-search" id="nx-user-search-input" placeholder="Поиск пользователя...">
+                        </div>
+                        
+                        <div style="width: 100%; flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 5px; display: flex; flex-direction: column; align-items: center;" id="nx-users-scroll-area">
+                            <div class="nx-users-section-title">Разработчик</div>
+                            <div class="nx-user-card developer" onclick="window.open('https://vk.com/tclaps', '_blank')" style="margin-bottom: 30px;">
+                                <div class="nx-user-avatar">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                                        <path d="M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5M19 19C19 19.6 18.6 20 18 20H6C5.4 20 5 19.6 5 19V18H19V19Z"/>
+                                    </svg>
+                                </div>
+                                <div class="nx-user-name" style="font-weight: 800; font-size: 14px;">Terry_Clapsman</div>
+                            </div>
+
+                            <div class="nx-users-section-title">Пользователи <span class="nx-user-count" id="nx-total-users-count">${users.length}</span></div>
+                            <div class="nx-users-grid" id="nx-users-grid">
+                                ${users.map(user => `
+                                    <div class="nx-user-card" title="${user}">
+                                        <div class="nx-user-avatar">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                            </svg>
+                                        </div>
+                                        <div class="nx-user-name">${user}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+
+                            ${allReviews.length > 0 ? `
+                                <div class="nx-reviews-section">
+                                    <div class="nx-reviews-title">Отзывы о скрипте</div>
+                                    <div class="nx-reviews-viewport">
+                                        <div class="nx-reviews-marquee">
+                                            ${[...allReviews, ...allReviews].map(rev => `
+                                                <div class="nx-review-card">
+                                                    <div class="nx-review-header">
+                                                        <div class="nx-review-nick">${rev.nick}</div>
+                                                        <div class="nx-review-info">${rev.info}</div>
+                                                    </div>
+                                                    <div class="nx-review-text">${rev.text.replace(/\\n/g, '<br>')}</div>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                const searchInput = document.getElementById('nx-user-search-input');
+                const usersGrid = document.getElementById('nx-users-grid');
+                const countBadge = id => document.getElementById(id);
+
+                searchInput.oninput = (e) => {
+                    const query = e.target.value.toLowerCase();
+                    const filtered = users.filter(u => u.toLowerCase().includes(query));
+                    
+                    usersGrid.innerHTML = filtered.map(user => `
+                        <div class="nx-user-card" title="${user}">
+                            <div class="nx-user-avatar">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                                </svg>
+                            </div>
+                            <div class="nx-user-name">${user}</div>
+                        </div>
+                    `).join('');
+                    
+                    const countEl = document.getElementById('nx-total-users-count');
+                    if (countEl) countEl.textContent = filtered.length;
+                };
+            };
 
             if (activeTab === 'templates') {
                 main.innerHTML = `
@@ -1994,6 +2372,8 @@
                         }
                     }
                 };
+            } else if (activeTab === 'users') {
+                renderUsersTab();
             } else {
                 if (isCheckingAccess && !cachedHasModAccess) {
                     main.innerHTML = `
@@ -2061,9 +2441,10 @@
                                 '2': '(02) Модератор',
                                 '3': '(03) Старший Модератор',
                                 '4': isSZM ? '(04) Следящий за Модерацией' : '(04) Специальный Модератор',
-                                '5': '(05) Куратор модерации',
-                                '6': '(06) Заместитель ГМ',
-                                '7': '(07) Главный Модератор'
+                                '5': '(05) Куратор Модерации',
+                                '6': '(06) Заместитель Главного Модератора',
+                                '7': '(07) Главный Модератор',
+                                '8': '(08) Следящий за Discord'
                             };
                             const targetRoleName = levelToName[level];
                             if (!targetRoleName) return;
@@ -2139,9 +2520,10 @@
                                 '2': '(02) Модератор',
                                 '3': '(03) Старший Модератор',
                                 '4': isSZM ? '(04) Следящий за Модерацией' : '(04) Специальный Модератор',
-                                '5': '(05) Куратор модерации',
-                                '6': '(06) Заместитель ГМ',
-                                '7': '(07) Главный Модератор'
+                                '5': '(05) Куратор Модерации',
+                                '6': '(06) Заместитель Главного Модератора',
+                                '7': '(07) Главный Модератор',
+                                '8': '(08) Следящий за Discord'
                             };
                             const targetRoleName = levelToName[level];
                             
@@ -2180,7 +2562,6 @@
                                 handledCheckboxes.add(checkbox);
                             });
 
-                            // Дополнительная проверка для всех чекбоксов, которые могли быть пропущены
                             targetForm.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                                 if (handledCheckboxes.has(checkbox)) return;
                                 
@@ -2216,8 +2597,71 @@
                     }
 
                     const renderArchiveForm = () => {
+                        const loadNicknames = async (serverId) => {
+                            const nickInput = document.getElementById('arch-nick');
+                            const nickList = document.getElementById('nick-list');
+                            if (!nickInput || !nickList) return;
+
+                            nickInput.placeholder = '⏳ Загрузка...';
+                            nickInput.disabled = true;
+
+                            try {
+                                const response = await fetch(`/forums/${serverId}/`);
+                                if (!response.ok) throw new Error();
+                                
+                                const html = await response.text();
+                                const parser = new DOMParser();
+                                const doc = parser.parseFromString(html, 'text/html');
+                                
+                                const nicks = new Set();
+                                const regex = /\b([A-Z][a-z]+[_\s][A-Z][a-z]+)\b/g;
+                                
+                                doc.querySelectorAll('.structItem-title a').forEach(el => {
+                                    const text = el.textContent.trim();
+                                    let match;
+                                    regex.lastIndex = 0;
+                                    while ((match = regex.exec(text)) !== null) {
+                                        nicks.add(match[1].replace(/\s+/g, '_'));
+                                    }
+                                });
+
+                                doc.querySelectorAll('.structItem-parts a.username').forEach(el => {
+                                    const text = el.textContent.trim();
+                                    let match;
+                                    regex.lastIndex = 0;
+                                    while ((match = regex.exec(text)) !== null) {
+                                        nicks.add(match[1].replace(/\s+/g, '_'));
+                                    }
+                                });
+
+                                const sortedNicks = Array.from(nicks).sort();
+                                
+                                nickList.innerHTML = sortedNicks.map(n => `<option value="${n}">${n}</option>`).join('');
+                                nickInput.placeholder = 'Введите или выберите ник';
+                            } catch (err) {
+                                nickInput.placeholder = '❌ Ошибка загрузки';
+                            } finally {
+                                nickInput.disabled = false;
+                            }
+                        };
+
+                        const getServerFromContext = () => {
+                            const title = document.title.toLowerCase();
+                            const url = window.location.href;
+                            if (title.includes('южный') || url.includes('/37/')) return '37';
+                            if (title.includes('северный') || url.includes('/294/')) return '294';
+                            if (title.includes('восточный') || url.includes('/366/')) return '366';
+                            if (title.includes('западный') || url.includes('/230/')) return '230';
+                            if (title.includes('приморский') || url.includes('/277/')) return '277';
+                            if (title.includes('федеральный') || url.includes('/143/')) return '143';
+                            if (title.includes('москва') || url.includes('/361/')) return '361';
+                            return '37';
+                        };
+
+                        const currentServerId = getServerFromContext();
+
                         main.innerHTML = `
-                            <div class="nx-content" style="padding: 25px; overflow-y: auto;">
+                            <div class="nx-content" style="padding: 15px; overflow-y: auto;">
                                 <div class="nx-archive-form">
                                     <div class="nx-form-header">
                                         <h3 class="nx-form-title">🛡️ Снятие модератора</h3>
@@ -2227,20 +2671,21 @@
                                     <div class="nx-form-group full">
                                         <label>Сервер</label>
                                         <select class="nx-select" id="arch-server">
-                                            <option value="37">Южный округ</option>
-                                            <option value="294">Северный округ</option>
-                                            <option value="366">Восточный округ</option>
-                                            <option value="230">Западный округ</option>
-                                            <option value="277">Приморский округ</option>
-                                            <option value="143">Федеральный округ</option>
-                                            <option value="361">Москва</option>
+                                            <option value="37" ${currentServerId === '37' ? 'selected' : ''}>Южный округ</option>
+                                            <option value="294" ${currentServerId === '294' ? 'selected' : ''}>Северный округ</option>
+                                            <option value="366" ${currentServerId === '366' ? 'selected' : ''}>Восточный округ</option>
+                                            <option value="230" ${currentServerId === '230' ? 'selected' : ''}>Западный округ</option>
+                                            <option value="277" ${currentServerId === '277' ? 'selected' : ''}>Приморский округ</option>
+                                            <option value="143" ${currentServerId === '143' ? 'selected' : ''}>Федеральный округ</option>
+                                            <option value="361" ${currentServerId === '361' ? 'selected' : ''}>Москва</option>
                                         </select>
                                     </div>
                                     
                                     <div class="nx-form-row">
                                         <div class="nx-form-group">
                                             <label>Никнейм игрока</label>
-                                            <input type="text" class="nx-input" id="arch-nick" placeholder="Terry_Clapsman">
+                                            <input type="text" class="nx-input" id="arch-nick" list="nick-list" placeholder="Введите или выберите ник">
+                                            <datalist id="nick-list"></datalist>
                                         </div>
                                         
                                         <div class="nx-form-group">
@@ -2272,6 +2717,10 @@
                         `;
 
                         document.getElementById('btn-mod-back').onclick = renderModMenu;
+
+                        const serverSelect = document.getElementById('arch-server');
+                        serverSelect.onchange = (e) => loadNicknames(e.target.value);
+                        loadNicknames(serverSelect.value);
 
                         const levelInput = document.getElementById('arch-level');
                         const szmContainer = document.getElementById('szm-container');
@@ -2305,11 +2754,11 @@
                             }
 
                             const lvlNum = parseInt(level);
-                            if (isNaN(lvlNum) || lvlNum < 1 || lvlNum > 7) {
+                            if (isNaN(lvlNum) || lvlNum < 1 || lvlNum > 8) {
                                 showCustomDialog({
                                     type: 'alert',
                                     title: 'Неверный уровень',
-                                    message: 'Уровень модерации должен быть числом от 1 до 7!'
+                                    message: 'Уровень модерации должен быть числом от 1 до 8!'
                                 });
                                 return;
                             }
@@ -2748,6 +3197,8 @@
                                 return;
                             }
 
+                            const isSZMAp = document.getElementById('is-szm-ap').checked;
+
                             const btn = document.getElementById('btn-create-ap');
                             const status = document.getElementById('ap-status');
                             
@@ -2773,7 +3224,18 @@
 
                                 const serverId = document.getElementById('sel-srv-ap').value;
 
-                                const formData = new URLSearchParams();
+                                 const mIDMatch = faLink.match(/members\/.*?\.(\d+)\//) || faLink.match(/members\/(\d+)\//);
+                                 const mID = mIDMatch ? mIDMatch[1] : null;
+                                 
+                                 if (mID) {
+                                     try {
+                                         await grantModeratorRole(mID, modLevel, isSZMAp, status);
+                                     } catch (roleErr) {
+                                         console.error('NexusScript: Ошибка выдачи роли:', roleErr);
+                                     }
+                                 }
+
+                                 const formData = new URLSearchParams();
                                 formData.append('title', finalTitle);
                                 formData.append('message_html', finalText.replace(/\n/g, '<br>'));
                                 formData.append('_xfToken', xfToken);
@@ -2949,8 +3411,30 @@
             }
         };
 
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+
+        const blockScroll = (e) => {
+            if (overlay && document.contains(overlay)) {
+                if (e.target.closest('.nx-window')) return;
+                e.preventDefault();
+            }
+        };
+
+        const removeOverlay = () => {
+            document.body.style.overflow = originalOverflow;
+            overlay.remove();
+            createFloatButton();
+            window.removeEventListener('keydown', handleEsc);
+            document.removeEventListener('wheel', blockScroll, { passive: false });
+            document.removeEventListener('touchmove', blockScroll, { passive: false });
+        };
+
         document.body.appendChild(overlay);
         renderTabContent();
+
+        document.addEventListener('wheel', blockScroll, { passive: false });
+        document.addEventListener('touchmove', blockScroll, { passive: false });
 
         overlay.querySelectorAll('.nx-nav-btn').forEach(btn => {
             btn.onclick = () => {
@@ -2980,25 +3464,21 @@
 
         const handleEsc = (e) => {
             if (e.key === 'Escape') {
-                overlay.remove();
-                createFloatButton();
-                window.removeEventListener('keydown', handleEsc);
+                removeOverlay();
             }
         };
 
         window.addEventListener('keydown', handleEsc);
 
-        document.getElementById('nx-close').onclick = () => {
-            overlay.remove();
-            createFloatButton();
-            window.removeEventListener('keydown', handleEsc);
-        };
+        document.getElementById('nx-close').onclick = removeOverlay;
 
         overlay.focus();
     }
 
     const verifiedUsers = new Set();
+    let allReviews = [];
     const DB_URL = 'https://nexusscript-online-default-rtdb.europe-west1.firebasedatabase.app/users';
+    const REVIEWS_URL = 'https://nexusscript-online-default-rtdb.europe-west1.firebasedatabase.app/review';
 
     function sanitizeUsername(username) {
         return username.replace(/[.#$/[\]]/g, '_');
@@ -3089,13 +3569,42 @@
             .catch(err => console.error('NexusScript Fetch Error:', err));
     }
 
+    function fetchReviews() {
+        fetch(`${REVIEWS_URL}.json`)
+            .then(response => response.json())
+            .then(data => {
+                if (data) {
+                    const oldLen = allReviews.length;
+
+                    const parsedReviews = Object.values(data).filter(rev => 
+                        rev && typeof rev === 'object' && (rev.nick || rev.text)
+                    ).map(rev => ({
+                        nick: rev.nick || 'Аноним',
+                        info: rev.info || '',
+                        text: rev.text || ''
+                    }));
+
+                    allReviews = parsedReviews;
+                    
+                    const modal = document.getElementById('nx-modal-v17');
+                    if (modal && activeTab === 'users' && (oldLen !== allReviews.length || oldLen === 0)) {
+                        const main = modal.querySelector('.nx-main');
+                        if (main && typeof renderUsersTabGlobal === 'function') {
+                            renderUsersTabGlobal();
+                        }
+                    }
+                }
+            })
+            .catch(err => console.error('NexusScript Reviews Fetch Error:', err));
+    }
+
     setInterval(sendHeartbeat, 60000);
-    setInterval(fetchOnlineUsers, 60000);
+    setInterval(fetchOnlineUsers, 30000);
+    setInterval(fetchReviews, 60000);
     
-    setTimeout(() => {
-        sendHeartbeat();
-        fetchOnlineUsers();
-    }, 2000);
+    sendHeartbeat();
+    fetchOnlineUsers();
+    fetchReviews();
 
     function addNexusBadges() {
         if (!db.showBadges) return;
@@ -3175,7 +3684,7 @@
         floatBtn = document.createElement('button');
         floatBtn.id = 'nx-float-trigger';
         floatBtn.className = 'nx-float-btn';
-        floatBtn.innerHTML = '⚙️ NexusScript';
+        floatBtn.innerHTML = `<img src="${chrome.runtime.getURL('icons/icon128.png')}" alt="NexusScript">`;
         floatBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
